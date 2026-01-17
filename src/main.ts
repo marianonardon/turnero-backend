@@ -56,8 +56,10 @@ async function bootstrap() {
   );
   
   const port = process.env.PORT || 3001;
-  await app.listen(port);
-  console.log(`🚀 Backend running on http://localhost:${port}`);
+  // Escuchar en 0.0.0.0 para que Railway pueda conectarse
+  await app.listen(port, '0.0.0.0');
+  console.log(`🚀 Backend running on http://0.0.0.0:${port}`);
+  console.log(`🌐 Accessible from Railway on port ${port}`);
 }
 
 bootstrap();
