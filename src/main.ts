@@ -21,9 +21,6 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
   });
   
-  // Set global prefix for all routes
-  app.setGlobalPrefix('api');
-  
   // Global validation pipe
   app.useGlobalPipes(
     new ValidationPipe({
@@ -38,6 +35,7 @@ async function bootstrap() {
   await app.listen(port, '0.0.0.0');
   console.log(`🚀 Backend running on http://0.0.0.0:${port}`);
   console.log(`🌐 Accessible from Railway on port ${port}`);
+  console.log(`📋 POST /tenants endpoint should be available`);
 }
 
 bootstrap();

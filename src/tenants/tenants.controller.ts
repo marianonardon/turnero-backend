@@ -15,12 +15,14 @@ import { TenantGuard } from '../common/guards/tenant.guard';
 
 @Controller('tenants')
 export class TenantsController {
-  constructor(private readonly tenantsService: TenantsService) {}
+  constructor(private readonly tenantsService: TenantsService) {
+    console.log('✅ TenantsController initialized - POST /tenants endpoint registered');
+  }
 
   // Admin: Crear tenant (durante onboarding) - DEBE IR ANTES de las rutas GET para evitar conflictos
   @Post()
   async create(@Body() createTenantDto: CreateTenantDto) {
-    console.log('📥 Received tenant creation request:', createTenantDto);
+    console.log('📥 POST /tenants - Received tenant creation request:', createTenantDto);
     try {
       const tenant = await this.tenantsService.create(createTenantDto);
       console.log('✅ Tenant created successfully:', tenant.id);
