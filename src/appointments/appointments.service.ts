@@ -170,20 +170,31 @@ export class AppointmentsService {
       throw new Error(`Invalid date format: ${query.date}. Expected YYYY-MM-DD`);
     }
 
-    const date = new Date(
+    // Crear fecha en UTC para evitar problemas de timezone
+    // Usar Date.UTC para crear la fecha en UTC
+    const date = new Date(Date.UTC(
       parseInt(dateParts[0]),
       parseInt(dateParts[1]) - 1, // Mes es 0-indexed
       parseInt(dateParts[2]),
-    );
+    ));
 
     if (isNaN(date.getTime())) {
       throw new Error(`Invalid date: ${query.date}`);
     }
     
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Crear startOfDay y endOfDay en UTC
+    const startOfDay = new Date(Date.UTC(
+      parseInt(dateParts[0]),
+      parseInt(dateParts[1]) - 1,
+      parseInt(dateParts[2]),
+      0, 0, 0, 0
+    ));
+    const endOfDay = new Date(Date.UTC(
+      parseInt(dateParts[0]),
+      parseInt(dateParts[1]) - 1,
+      parseInt(dateParts[2]),
+      23, 59, 59, 999
+    ));
 
     console.log('📅 Parsed date:', {
       input: query.date,
@@ -326,10 +337,25 @@ export class AppointmentsService {
       const [startHour, startMinute] = schedule.startTime.split(':').map(Number);
       const [endHour, endMinute] = schedule.endTime.split(':').map(Number);
 
-      const scheduleStart = new Date(date);
-      scheduleStart.setHours(startHour, startMinute, 0, 0);
-      const scheduleEnd = new Date(date);
-      scheduleEnd.setHours(endHour, endMinute, 0, 0);
+      // Crear fechas en UTC para evitar problemas de timezone
+      const scheduleStart = new Date(Date.UTC(
+        parseInt(dateParts[0]),
+        parseInt(dateParts[1]) - 1,
+        parseInt(dateParts[2]),
+        startHour,
+        startMinute,
+        0,
+        0
+      ));
+      const scheduleEnd = new Date(Date.UTC(
+        parseInt(dateParts[0]),
+        parseInt(dateParts[1]) - 1,
+        parseInt(dateParts[2]),
+        endHour,
+        endMinute,
+        0,
+        0
+      ));
 
       console.log(`📋 Processing schedule: ${schedule.startTime} - ${schedule.endTime}`);
       console.log(`   Schedule start: ${scheduleStart.toISOString()}`);
@@ -344,7 +370,8 @@ export class AppointmentsService {
 
         if (slotEnd > scheduleEnd) break;
 
-        const timeString = `${currentTime.getHours().toString().padStart(2, '0')}:${currentTime.getMinutes().toString().padStart(2, '0')}`;
+        // Usar UTC para la hora mostrada (para evitar problemas de timezone)
+        const timeString = `${currentTime.getUTCHours().toString().padStart(2, '0')}:${currentTime.getUTCMinutes().toString().padStart(2, '0')}`;
 
         // Verificar si hay conflicto con appointments existentes
         const hasConflict = appointments.some(apt => {
@@ -358,8 +385,17 @@ export class AppointmentsService {
         });
 
         // Verificar que no sea en el pasado
+        // Comparar en UTC para evitar problemas de timezone
         const now = new Date();
-        const isPast = currentTime.getTime() < now.getTime();
+        const nowUTC = new Date(Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate(),
+          now.getUTCHours(),
+          now.getUTCMinutes(),
+          now.getUTCSeconds()
+        ));
+        const isPast = currentTime.getTime() < nowUTC.getTime();
 
         const available = !hasConflict && !isPast;
 
