@@ -1,4 +1,4 @@
-import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { TenantsModule } from './tenants/tenants.module';
@@ -30,13 +30,9 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     // Aplicar middleware de tenant a todas las rutas admin
-    // Excluir POST /tenants porque es público (onboarding)
+    // El middleware solo extrae tenantId, no bloquea requests sin tenantId
     consumer
       .apply(TenantMiddleware)
-      .exclude(
-        { path: 'tenants', method: RequestMethod.POST }, // POST /tenants es público para onboarding
-        { path: 'tenants/slug/:slug', method: RequestMethod.GET }, // GET /tenants/slug/:slug es público
-      )
       .forRoutes('tenants', 'services', 'professionals', 'schedules', 'appointments', 'customers');
   }
 }
