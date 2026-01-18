@@ -20,23 +20,29 @@ export class NotificationsService {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const magicLink = `${frontendUrl}/auth/callback?token=${token}`;
 
-    // En desarrollo, solo loguear
-    if (process.env.NODE_ENV === 'development' && !process.env.RESEND_API_KEY) {
-      console.log('📧 Magic Link (desarrollo):', magicLink);
-      return { success: true, message: 'Magic link generado (modo desarrollo)' };
+    // Si no hay Resend configurado, solo loguear (desarrollo o producción sin config)
+    if (!this.resend || !process.env.RESEND_API_KEY) {
+      console.log('📧 Magic Link (Resend no configurado):', magicLink);
+      console.warn('⚠️ Para enviar emails, configura RESEND_API_KEY en Railway');
+      return { success: true, message: 'Magic link generado (Resend no configurado)', magicLink };
     }
 
     try {
-      await this.resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'noreply@turnero.com',
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+      console.log(`📧 Enviando magic link a ${email} desde ${fromEmail}`);
+      
+      const result = await this.resend.emails.send({
+        from: fromEmail,
         to: email,
         subject: 'Iniciar sesión en Turnero',
         html: this.getMagicLinkTemplate(magicLink),
       });
 
+      console.log('✅ Magic link enviado exitosamente:', result);
       return { success: true, message: 'Magic link enviado por email' };
     } catch (error) {
-      console.error('Error sending magic link email:', error);
+      console.error('❌ Error sending magic link email:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       throw error;
     }
   }
