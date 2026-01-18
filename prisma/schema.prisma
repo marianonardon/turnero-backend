@@ -20,6 +20,8 @@ model Tenant {
   email       String   // Email de contacto
   phone       String?  // Teléfono opcional
   address     String?  // Dirección física del negocio
+  latitude    Float?   // Latitud de la ubicación
+  longitude   Float?   // Longitud de la ubicación
   
   // Branding
   logoUrl     String?  // URL del logo
