@@ -199,7 +199,8 @@ export class AppointmentsService {
     console.log('📅 Parsed date:', {
       input: query.date,
       parsed: date.toISOString(),
-      dayOfWeek: date.getDay(),
+      parsedUTC: date.toUTCString(),
+      dayOfWeek: date.getUTCDay(),
     });
 
     // Verificar que el profesional pertenezca al tenant
@@ -215,8 +216,8 @@ export class AppointmentsService {
     }
 
     // Obtener horarios del profesional o globales del tenant
-    // getDay() retorna 0 (Domingo) a 6 (Sábado)
-    const dayOfWeek = date.getDay();
+    // getUTCDay() retorna 0 (Domingo) a 6 (Sábado) en UTC
+    const dayOfWeek = date.getUTCDay();
     
     console.log('🔍 Searching schedules:', {
       tenantId,
