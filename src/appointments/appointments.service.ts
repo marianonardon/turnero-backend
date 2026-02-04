@@ -13,20 +13,37 @@ export class AppointmentsService {
   ) {}
 
   async create(tenantId: string, createAppointmentDto: CreateAppointmentDto) {
-    // Usar transacción para prevenir race conditions
-    return await this.prisma.$transaction(async (tx) => {
-      // Obtener el servicio para calcular endTime
-      const service = await tx.service.findUnique({
-        where: { id: createAppointmentDto.serviceId },
+    try {
+      console.log('🔵 Starting appointment creation transaction:', {
+        tenantId,
+        serviceId: createAppointmentDto.serviceId,
+        professionalId: createAppointmentDto.professionalId,
+        startTime: createAppointmentDto.startTime,
       });
 
-      if (!service) {
-        throw new NotFoundException('Service not found');
-      }
+      // Usar transacción para prevenir race conditions
+      // Aumentar timeout a 10 segundos para evitar problemas de timeout
+      return await this.prisma.$transaction(async (tx) => {
+        // Obtener el servicio para calcular endTime
+        const service = await tx.service.findUnique({
+          where: { id: createAppointmentDto.serviceId },
+        });
 
-      const startTime = new Date(createAppointmentDto.startTime);
-      const endTime = new Date(startTime);
-      endTime.setMinutes(endTime.getMinutes() + service.duration);
+        if (!service) {
+          console.error('❌ Service not found:', createAppointmentDto.serviceId);
+          throw new NotFoundException('Service not found');
+        }
+
+        console.log('✅ Service found:', { id: service.id, duration: service.duration });
+
+        const startTime = new Date(createAppointmentDto.startTime);
+        const endTime = new Date(startTime);
+        endTime.setMinutes(endTime.getMinutes() + service.duration);
+        
+        console.log('⏰ Calculated times:', {
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+        });
 
       // Primero, obtener o crear el customer para verificar duplicados
       const customer = await tx.customer.upsert({
@@ -124,37 +141,51 @@ export class AppointmentsService {
         throw new ConflictException('Este horario ya está reservado. Por favor selecciona otro horario.');
       }
 
-      // Crear appointment dentro de la transacción
-      const appointment = await tx.appointment.create({
-        data: {
-          tenantId,
-          customerId: customer.id,
-          serviceId: createAppointmentDto.serviceId,
-          professionalId: createAppointmentDto.professionalId,
-          startTime,
-          endTime,
-          status: createAppointmentDto.status || AppointmentStatus.PENDING,
-          notes: createAppointmentDto.notes,
-        },
-        include: {
-          customer: true,
-          service: true,
-          professional: true,
-        },
-      });
+        // Crear appointment dentro de la transacción
+        console.log('📝 Creating appointment in transaction...');
+        const appointment = await tx.appointment.create({
+          data: {
+            tenantId,
+            customerId: customer.id,
+            serviceId: createAppointmentDto.serviceId,
+            professionalId: createAppointmentDto.professionalId,
+            startTime,
+            endTime,
+            status: createAppointmentDto.status || AppointmentStatus.PENDING,
+            notes: createAppointmentDto.notes,
+          },
+          include: {
+            customer: true,
+            service: true,
+            professional: true,
+          },
+        });
 
-      return appointment;
-    }).then(async (appointment) => {
-      // Enviar email de confirmación después de que la transacción se complete
-      // No bloquear si falla
-      try {
-        await this.notificationsService.sendAppointmentConfirmation(appointment.id);
-      } catch (error) {
-        console.error('Error sending confirmation email:', error);
-        // No fallar la creación del appointment si el email falla
-      }
-      return appointment;
-    });
+        console.log('✅ Appointment created in transaction:', appointment.id);
+        return appointment;
+      }, {
+        maxWait: 10000, // Esperar hasta 10 segundos para que la transacción comience
+        timeout: 10000, // Timeout de 10 segundos para la transacción completa
+      }).then(async (appointment) => {
+        // Enviar email de confirmación después de que la transacción se complete
+        // No bloquear si falla
+        try {
+          await this.notificationsService.sendAppointmentConfirmation(appointment.id);
+        } catch (error) {
+          console.error('Error sending confirmation email:', error);
+          // No fallar la creación del appointment si el email falla
+        }
+        return appointment;
+      });
+    } catch (error) {
+      console.error('❌ Error in create appointment:', {
+        error: error.message,
+        stack: error.stack,
+        tenantId,
+        createAppointmentDto,
+      });
+      throw error;
+    }
   }
 
   async getAvailability(tenantId: string, query: AvailabilityQueryDto) {
@@ -452,6 +483,56 @@ export class AppointmentsService {
     }
 
     return uniqueSlots;
+  }
+
+  // Público: Obtener appointments del día (solo para visualización, sin datos sensibles)
+  async getDayAppointments(tenantId: string, date: string) {
+    const dateParts = date.split('-');
+    if (dateParts.length !== 3) {
+      throw new Error(`Invalid date format: ${date}. Expected YYYY-MM-DD`);
+    }
+
+    const startOfDay = new Date(Date.UTC(
+      parseInt(dateParts[0]),
+      parseInt(dateParts[1]) - 1,
+      parseInt(dateParts[2]),
+      0, 0, 0, 0
+    ));
+    const endOfDay = new Date(Date.UTC(
+      parseInt(dateParts[0]),
+      parseInt(dateParts[1]) - 1,
+      parseInt(dateParts[2]),
+      23, 59, 59, 999
+    ));
+
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        tenantId,
+        startTime: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
+        status: {
+          notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW],
+        },
+      },
+      select: {
+        id: true,
+        professionalId: true,
+        startTime: true,
+        endTime: true,
+        service: {
+          select: {
+            duration: true,
+          },
+        },
+      },
+      orderBy: {
+        startTime: 'asc',
+      },
+    });
+
+    return appointments;
   }
 
   async findAll(tenantId: string, filters?: {

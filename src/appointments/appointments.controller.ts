@@ -61,11 +61,11 @@ export class AppointmentsController {
     }
   }
 
-  // Público: Crear appointment (cliente reserva turno)
-  @Post()
-  async create(
+  // Público: Obtener appointments del día (para visualización)
+  @Get('day')
+  async getDayAppointments(
     @Query('tenantSlug') tenantSlug: string,
-    @Body() createAppointmentDto: CreateAppointmentDto,
+    @Query('date') date: string,
   ) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { slug: tenantSlug },
@@ -75,7 +75,45 @@ export class AppointmentsController {
       throw new NotFoundException('Tenant not found');
     }
 
-    return this.appointmentsService.create(tenant.id, createAppointmentDto);
+    return this.appointmentsService.getDayAppointments(tenant.id, date);
+  }
+
+  // Público: Crear appointment (cliente reserva turno)
+  @Post()
+  async create(
+    @Query('tenantSlug') tenantSlug: string,
+    @Body() createAppointmentDto: CreateAppointmentDto,
+  ) {
+    try {
+      console.log('📝 Creating appointment:', {
+        tenantSlug,
+        professionalId: createAppointmentDto.professionalId,
+        serviceId: createAppointmentDto.serviceId,
+        startTime: createAppointmentDto.startTime,
+        customerEmail: createAppointmentDto.customerEmail,
+      });
+
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { slug: tenantSlug },
+      });
+
+      if (!tenant) {
+        throw new NotFoundException('Tenant not found');
+      }
+
+      const appointment = await this.appointmentsService.create(tenant.id, createAppointmentDto);
+      
+      console.log('✅ Appointment created successfully:', appointment.id);
+      return appointment;
+    } catch (error) {
+      console.error('❌ Error creating appointment:', {
+        error: error.message,
+        stack: error.stack,
+        tenantSlug,
+        createAppointmentDto,
+      });
+      throw error;
+    }
   }
 
   // Admin: Listar appointments
