@@ -16,16 +16,17 @@ async function bootstrap() {
   console.log('  - ALLOWED_ORIGINS:', allowedOrigins);
   
   app.enableCors({
-    origin: true,
+    origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
+    credentials: true,
   });
   
-  // Global validation pipe
+  // Global validation pipe - Security hardened
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: false, // Cambiar a false para permitir campos adicionales y evitar 404
+      forbidNonWhitelisted: true, // Rechazar campos no definidos en DTOs (previene prototype pollution)
       transform: true,
       transformOptions: {
         enableImplicitConversion: true,

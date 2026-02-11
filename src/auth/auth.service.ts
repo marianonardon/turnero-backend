@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LoginDto } from './dto/login.dto';
@@ -9,6 +10,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
+    private jwtService: JwtService,
   ) {}
 
   async sendMagicLink(loginDto: LoginDto) {
@@ -43,12 +45,10 @@ export class AuthService {
       // No fallar si el email falla, pero loguear el error
     }
 
-    const magicLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?token=${token}`;
-
+    // SECURITY: Never expose the magic link in response, even in development
+    // The link should only be sent via email
     return {
-      message: 'Magic link sent to email',
-      // En desarrollo, retornamos el link (NO hacer esto en producción)
-      magicLink: process.env.NODE_ENV === 'development' ? magicLink : undefined,
+      message: 'Magic link sent to email. Please check your inbox.',
     };
   }
 
@@ -91,9 +91,17 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    // TODO: Generar JWT token
-    // Por ahora retornamos user data
+    // Generar JWT token con información del usuario y tenant
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      tenantId: user.tenantId,
+    };
+
+    const accessToken = await this.jwtService.signAsync(payload);
+
     return {
+      accessToken,
       user: {
         id: user.id,
         email: user.email,
@@ -101,7 +109,6 @@ export class AuthService {
         tenantId: user.tenantId,
         tenant: user.tenant,
       },
-      // jwt: '...' // En producción, generar JWT
     };
   }
 }

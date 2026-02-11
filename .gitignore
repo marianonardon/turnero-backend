@@ -38,6 +38,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
+.env.local.backup
 .env.*.local
 .env.development
 .env.production

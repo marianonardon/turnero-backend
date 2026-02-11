@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsOptional, IsNotEmpty, IsNumber } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsNotEmpty, IsNumber, Matches } from 'class-validator';
 
 export class CreateTenantDto {
   @IsString()
@@ -7,6 +7,9 @@ export class CreateTenantDto {
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[a-z0-9-]+$/, {
+    message: 'Slug debe contener solo letras minúsculas, números y guiones',
+  })
   slug: string;
 
   @IsEmail()
@@ -35,10 +38,16 @@ export class CreateTenantDto {
 
   @IsString()
   @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, {
+    message: 'primaryColor debe ser un color hexadecimal válido (ej: #FF5733)',
+  })
   primaryColor?: string;
 
   @IsString()
   @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, {
+    message: 'secondaryColor debe ser un color hexadecimal válido (ej: #FF5733)',
+  })
   secondaryColor?: string;
 
   @IsString()

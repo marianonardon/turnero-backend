@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -22,16 +22,38 @@ export class AppointmentsService {
       });
 
       // Usar transacción para prevenir race conditions
-      // Aumentar timeout a 10 segundos para evitar problemas de timeout
+      // Aumentar timeout a 15 segundos para evitar problemas de timeout
       return await this.prisma.$transaction(async (tx) => {
-        // Obtener el servicio para calcular endTime
-        const service = await tx.service.findUnique({
-          where: { id: createAppointmentDto.serviceId },
+        // SECURITY FIX: Validar que el servicio pertenece al tenant
+        const service = await tx.service.findFirst({
+          where: {
+            id: createAppointmentDto.serviceId,
+            tenantId: tenantId,
+          },
         });
 
         if (!service) {
-          console.error('❌ Service not found:', createAppointmentDto.serviceId);
-          throw new NotFoundException('Service not found');
+          console.error('❌ Service not found or does not belong to tenant:', {
+            serviceId: createAppointmentDto.serviceId,
+            tenantId,
+          });
+          throw new NotFoundException('Service not found or you do not have access to it');
+        }
+
+        // SECURITY FIX: Validar que el professional pertenece al tenant
+        const professional = await tx.professional.findFirst({
+          where: {
+            id: createAppointmentDto.professionalId,
+            tenantId: tenantId,
+          },
+        });
+
+        if (!professional) {
+          console.error('❌ Professional not found or does not belong to tenant:', {
+            professionalId: createAppointmentDto.professionalId,
+            tenantId,
+          });
+          throw new NotFoundException('Professional not found or you do not have access to it');
         }
 
         console.log('✅ Service found:', { id: service.id, duration: service.duration });
@@ -164,8 +186,8 @@ export class AppointmentsService {
         console.log('✅ Appointment created in transaction:', appointment.id);
         return appointment;
       }, {
-        maxWait: 10000, // Esperar hasta 10 segundos para que la transacción comience
-        timeout: 10000, // Timeout de 10 segundos para la transacción completa
+        maxWait: 15000, // Esperar hasta 15 segundos para que la transacción comience
+        timeout: 15000, // Timeout de 15 segundos para la transacción completa
       }).then(async (appointment) => {
         // Enviar email de confirmación después de que la transacción se complete
         // No bloquear si falla
@@ -193,24 +215,48 @@ export class AppointmentsService {
 
     // Parsear fecha correctamente (formato ISO: 'YYYY-MM-DD')
     if (!query.date) {
-      throw new Error('Date is required');
+      throw new BadRequestException('Date is required');
+    }
+
+    // Validar formato YYYY-MM-DD
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(query.date)) {
+      throw new BadRequestException(`Invalid date format: ${query.date}. Expected YYYY-MM-DD`);
     }
 
     const dateParts = query.date.split('-');
-    if (dateParts.length !== 3) {
-      throw new Error(`Invalid date format: ${query.date}. Expected YYYY-MM-DD`);
+    const year = parseInt(dateParts[0]);
+    const month = parseInt(dateParts[1]);
+    const day = parseInt(dateParts[2]);
+
+    // Validar rangos válidos
+    if (month < 1 || month > 12) {
+      throw new BadRequestException(`Invalid month: ${month}. Must be between 1 and 12`);
+    }
+    if (day < 1 || day > 31) {
+      throw new BadRequestException(`Invalid day: ${day}. Must be between 1 and 31`);
     }
 
-    // Crear fecha en UTC para evitar problemas de timezone
-    // Usar Date.UTC para crear la fecha en UTC
-    const date = new Date(Date.UTC(
-      parseInt(dateParts[0]),
-      parseInt(dateParts[1]) - 1, // Mes es 0-indexed
-      parseInt(dateParts[2]),
-    ));
+    // TODO: TIMEZONE FIX NEEDED
+    // El código actual usa UTC para todas las fechas, pero debería usar el timezone del tenant.
+    // Para fix completo:
+    // 1. Obtener tenant.timezone (ej: 'America/Argentina/Buenos_Aires')
+    // 2. Usar date-fns-tz para convertir las fechas a la timezone del tenant
+    // 3. Generar slots en la timezone del tenant
+    // Por ahora, mantenemos UTC para no romper funcionalidad existente.
+
+    // Crear fecha en UTC
+    const date = new Date(Date.UTC(year, month - 1, day));
 
     if (isNaN(date.getTime())) {
-      throw new Error(`Invalid date: ${query.date}`);
+      throw new BadRequestException(`Invalid date: ${query.date}`);
+    }
+
+    // Validar que la fecha no sea más de 1 año en el futuro
+    const oneYearFromNow = new Date();
+    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+    if (date > oneYearFromNow) {
+      throw new BadRequestException('Cannot create appointments more than 1 year in advance');
     }
     
     // Crear startOfDay y endOfDay en UTC
