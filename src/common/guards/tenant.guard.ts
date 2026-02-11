@@ -22,7 +22,7 @@ export class TenantGuard implements CanActivate {
     // Debug logging
     if (process.env.NODE_ENV === 'development') {
       console.log('[TenantGuard] Checking tenantId:', tenantId);
-      console.log('[TenantGuard] Request path:', request.path);
+      console.log('[TenantGuard] Request URL:', request.url);
       console.log('[TenantGuard] User from JWT:', request.user);
     }
 
