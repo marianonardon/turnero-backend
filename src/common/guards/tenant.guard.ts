@@ -19,16 +19,10 @@ export class TenantGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<RequestWithTenant>();
     const tenantId = request['tenantId'];
 
-    console.log('🔐 [TenantGuard] Validating request:', {
-      method: request.method,
-      path: request.path,
-      tenantId,
-      hasUser: !!request.user,
-    });
+    console.log('🔐 [TenantGuard] Validating - tenantId:', tenantId);
 
     if (!tenantId) {
       console.error('[TenantGuard] ❌ Tenant ID is missing!');
-      console.error('[TenantGuard] Headers:', request.headers);
       throw new BadRequestException('Tenant ID is required. Please provide x-tenant-id header.');
     }
 
