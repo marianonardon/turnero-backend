@@ -587,7 +587,12 @@ export class AppointmentsService {
     startDate?: Date;
     endDate?: Date;
   }) {
-    return this.prisma.appointment.findMany({
+    console.log('🔍 [findAll] Called with:', {
+      tenantId,
+      filters,
+    });
+
+    const appointments = await this.prisma.appointment.findMany({
       where: {
         tenantId,
         ...(filters?.professionalId && { professionalId: filters.professionalId }),
@@ -606,6 +611,10 @@ export class AppointmentsService {
       },
       orderBy: { startTime: 'asc' },
     });
+
+    console.log(`✅ [findAll] Found ${appointments.length} appointments for tenant ${tenantId}`);
+
+    return appointments;
   }
 
   async findOne(id: string, tenantId: string) {

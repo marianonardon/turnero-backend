@@ -282,8 +282,12 @@ model Appointment {
   @@index([tenantId, startTime])
   @@index([tenantId, status])
   @@index([tenantId, professionalId, startTime])
+  @@index([tenantId, professionalId, startTime, status]) // Query optimizada de disponibilidad
+  @@index([tenantId, customerId, status]) // Historial de cliente
   @@index([customerId])
   @@index([startTime]) // Para queries de disponibilidad
+  @@index([professionalId, startTime, endTime]) // Detección de conflictos
+  @@unique([professionalId, startTime], name: "unique_professional_slot") // Prevenir double-booking
   @@map("appointments")
 }
 

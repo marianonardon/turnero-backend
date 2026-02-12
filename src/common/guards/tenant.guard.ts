@@ -19,8 +19,16 @@ export class TenantGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<RequestWithTenant>();
     const tenantId = request['tenantId'];
 
+    console.log('🔐 [TenantGuard] Validating request:', {
+      method: request.method,
+      path: request.path,
+      tenantId,
+      hasUser: !!request.user,
+    });
+
     if (!tenantId) {
-      console.error('[TenantGuard] Tenant ID is missing!');
+      console.error('[TenantGuard] ❌ Tenant ID is missing!');
+      console.error('[TenantGuard] Headers:', request.headers);
       throw new BadRequestException('Tenant ID is required. Please provide x-tenant-id header.');
     }
 
@@ -30,12 +38,15 @@ export class TenantGuard implements CanActivate {
     });
 
     if (!tenant) {
+      console.error(`[TenantGuard] ❌ Tenant not found: ${tenantId}`);
       throw new NotFoundException(`Tenant with ID ${tenantId} not found`);
     }
 
+    console.log(`[TenantGuard] ✅ Tenant validated: ${tenant.name} (${tenant.id})`);
+
     // Si hay un usuario autenticado (JWT), validar que pertenece al tenant
     if (request.user && request.user.tenantId !== tenantId) {
-      console.error('[TenantGuard] User tenantId mismatch!');
+      console.error('[TenantGuard] ❌ User tenantId mismatch!');
       console.error('  User tenantId:', request.user.tenantId);
       console.error('  Requested tenantId:', tenantId);
       throw new UnauthorizedException('You do not have access to this tenant');
