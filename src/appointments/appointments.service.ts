@@ -4,6 +4,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { AppointmentStatus } from '@prisma/client';
+import { utcToZonedTime, zonedTimeToUtc, format as formatTz } from 'date-fns-tz';
+import { startOfDay, endOfDay, parseISO, getDay } from 'date-fns';
 
 @Injectable()
 export class AppointmentsService {
@@ -58,10 +60,40 @@ export class AppointmentsService {
 
         console.log('✅ Service found:', { id: service.id, duration: service.duration });
 
-        const startTime = new Date(createAppointmentDto.startTime);
+        // Obtener tenant para timezone
+        const tenant = await tx.tenant.findUnique({
+          where: { id: tenantId },
+          select: { timezone: true, name: true }
+        });
+
+        if (!tenant) {
+          throw new NotFoundException('Tenant not found');
+        }
+
+        const timezone = tenant.timezone || 'UTC';
+        console.log('🌍 Using tenant timezone for appointment:', timezone);
+
+        // Parsear la fecha del appointment en el timezone del tenant
+        // Si el string ya tiene Z (UTC), parsearlo como UTC
+        // Si no tiene Z, asumirlo como hora local del tenant y convertir a UTC
+        let startTime: Date;
+        if (createAppointmentDto.startTime.endsWith('Z')) {
+          // Es UTC, usar directamente
+          startTime = new Date(createAppointmentDto.startTime);
+          console.log('📅 Received UTC time:', createAppointmentDto.startTime);
+        } else {
+          // Es hora local del tenant, convertir a UTC
+          startTime = zonedTimeToUtc(createAppointmentDto.startTime, timezone);
+          console.log('📅 Received local time, converted:', {
+            input: createAppointmentDto.startTime,
+            timezone,
+            utc: startTime.toISOString(),
+          });
+        }
+
         const endTime = new Date(startTime);
         endTime.setMinutes(endTime.getMinutes() + service.duration);
-        
+
         console.log('⏰ Calculated times:', {
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
@@ -237,47 +269,50 @@ export class AppointmentsService {
       throw new BadRequestException(`Invalid day: ${day}. Must be between 1 and 31`);
     }
 
-    // TODO: TIMEZONE FIX NEEDED
-    // El código actual usa UTC para todas las fechas, pero debería usar el timezone del tenant.
-    // Para fix completo:
-    // 1. Obtener tenant.timezone (ej: 'America/Argentina/Buenos_Aires')
-    // 2. Usar date-fns-tz para convertir las fechas a la timezone del tenant
-    // 3. Generar slots en la timezone del tenant
-    // Por ahora, mantenemos UTC para no romper funcionalidad existente.
+    // ✅ TIMEZONE FIX IMPLEMENTED
+    // Obtener tenant para usar su timezone
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { timezone: true, name: true }
+    });
 
-    // Crear fecha en UTC
-    const date = new Date(Date.UTC(year, month - 1, day));
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
 
-    if (isNaN(date.getTime())) {
+    const timezone = tenant.timezone || 'UTC'; // Fallback a UTC si no está configurado
+    console.log('🌍 Using tenant timezone:', timezone, 'for tenant:', tenant.name);
+
+    // Parsear la fecha en la zona horaria del tenant (no UTC)
+    // Crear fecha "naive" en la zona horaria local del tenant
+    const dateString = `${query.date}T00:00:00`; // YYYY-MM-DDT00:00:00
+    const dateInTenantTz = zonedTimeToUtc(dateString, timezone);
+
+    console.log('📅 Parsed date in tenant timezone:', {
+      input: query.date,
+      timezone,
+      dateInTenantTz: dateInTenantTz.toISOString(),
+      dateString,
+    });
+
+    if (isNaN(dateInTenantTz.getTime())) {
       throw new BadRequestException(`Invalid date: ${query.date}`);
     }
 
     // Validar que la fecha no sea más de 1 año en el futuro
     const oneYearFromNow = new Date();
     oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-    if (date > oneYearFromNow) {
+    if (dateInTenantTz > oneYearFromNow) {
       throw new BadRequestException('Cannot create appointments more than 1 year in advance');
     }
-    
-    // Crear startOfDay y endOfDay en UTC
-    const startOfDay = new Date(Date.UTC(
-      parseInt(dateParts[0]),
-      parseInt(dateParts[1]) - 1,
-      parseInt(dateParts[2]),
-      0, 0, 0, 0
-    ));
-    const endOfDay = new Date(Date.UTC(
-      parseInt(dateParts[0]),
-      parseInt(dateParts[1]) - 1,
-      parseInt(dateParts[2]),
-      23, 59, 59, 999
-    ));
 
-    console.log('📅 Parsed date:', {
-      input: query.date,
-      parsed: date.toISOString(),
-      parsedUTC: date.toUTCString(),
-      dayOfWeek: date.getUTCDay(),
+    // Crear startOfDay y endOfDay EN LA ZONA HORARIA DEL TENANT
+    const startOfDayLocal = zonedTimeToUtc(`${query.date}T00:00:00`, timezone);
+    const endOfDayLocal = zonedTimeToUtc(`${query.date}T23:59:59`, timezone);
+
+    console.log('📅 Day boundaries:', {
+      startOfDay: startOfDayLocal.toISOString(),
+      endOfDay: endOfDayLocal.toISOString(),
     });
 
     // Verificar que el profesional pertenezca al tenant
@@ -292,14 +327,17 @@ export class AppointmentsService {
       throw new NotFoundException('Professional not found');
     }
 
-    // Obtener horarios del profesional o globales del tenant
-    // getUTCDay() retorna 0 (Domingo) a 6 (Sábado) en UTC
-    const dayOfWeek = date.getUTCDay();
-    
+    // Calcular dayOfWeek en la zona horaria del tenant (NO en UTC)
+    // Convertir la fecha UTC a la zona horaria del tenant para obtener el día correcto
+    const dateInLocalTz = utcToZonedTime(dateInTenantTz, timezone);
+    const dayOfWeek = getDay(dateInLocalTz); // 0 (Domingo) a 6 (Sábado) en zona local
+
     console.log('🔍 Searching schedules:', {
       tenantId,
       professionalId: query.professionalId,
       dayOfWeek,
+      dayOfWeekName: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek],
+      dateInLocalTz: formatTz(dateInLocalTz, 'yyyy-MM-dd HH:mm:ss zzz', { timeZone: timezone }),
     });
 
     // Buscar horarios específicos del profesional primero
@@ -380,8 +418,8 @@ export class AppointmentsService {
         tenantId,
         professionalId: query.professionalId,
         startTime: {
-          gte: startOfDay,
-          lte: endOfDay,
+          gte: startOfDayLocal,
+          lte: endOfDayLocal,
         },
         status: {
           notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW],
@@ -410,34 +448,22 @@ export class AppointmentsService {
     console.log('⏱️ Service duration:', serviceDuration, 'minutes');
     console.log('📅 Existing appointments:', appointments.length);
 
-    // Por cada schedule, generar slots
+    // Por cada schedule, generar slots EN LA ZONA HORARIA DEL TENANT
     for (const schedule of schedules) {
       const [startHour, startMinute] = schedule.startTime.split(':').map(Number);
       const [endHour, endMinute] = schedule.endTime.split(':').map(Number);
 
-      // Crear fechas en UTC para evitar problemas de timezone
-      const scheduleStart = new Date(Date.UTC(
-        parseInt(dateParts[0]),
-        parseInt(dateParts[1]) - 1,
-        parseInt(dateParts[2]),
-        startHour,
-        startMinute,
-        0,
-        0
-      ));
-      const scheduleEnd = new Date(Date.UTC(
-        parseInt(dateParts[0]),
-        parseInt(dateParts[1]) - 1,
-        parseInt(dateParts[2]),
-        endHour,
-        endMinute,
-        0,
-        0
-      ));
+      // Crear fechas en la zona horaria del tenant
+      const scheduleStartString = `${query.date}T${schedule.startTime}:00`;
+      const scheduleEndString = `${query.date}T${schedule.endTime}:00`;
 
-      console.log(`📋 Processing schedule: ${schedule.startTime} - ${schedule.endTime}`);
-      console.log(`   Schedule start: ${scheduleStart.toISOString()}`);
-      console.log(`   Schedule end: ${scheduleEnd.toISOString()}`);
+      // Convertir a UTC para almacenamiento/comparación
+      const scheduleStart = zonedTimeToUtc(scheduleStartString, timezone);
+      const scheduleEnd = zonedTimeToUtc(scheduleEndString, timezone);
+
+      console.log(`📋 Processing schedule: ${schedule.startTime} - ${schedule.endTime} (tenant local time)`);
+      console.log(`   Schedule start (UTC): ${scheduleStart.toISOString()}`);
+      console.log(`   Schedule end (UTC): ${scheduleEnd.toISOString()}`);
 
       let currentTime = new Date(scheduleStart);
       let slotsGenerated = 0;
@@ -448,8 +474,11 @@ export class AppointmentsService {
 
         if (slotEnd > scheduleEnd) break;
 
-        // Usar UTC para la hora mostrada (para evitar problemas de timezone)
-        const timeString = `${currentTime.getUTCHours().toString().padStart(2, '0')}:${currentTime.getUTCMinutes().toString().padStart(2, '0')}`;
+        // Convertir currentTime a zona horaria del tenant para mostrar la hora LOCAL
+        const currentTimeInTenantTz = utcToZonedTime(currentTime, timezone);
+        const hours = currentTimeInTenantTz.getHours();
+        const minutes = currentTimeInTenantTz.getMinutes();
+        const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 
         // Verificar si hay conflicto con appointments existentes
         const hasConflict = appointments.some(apt => {
@@ -462,25 +491,18 @@ export class AppointmentsService {
           );
         });
 
-        // Verificar que no sea en el pasado
-        // Comparar en UTC para evitar problemas de timezone
+        // Verificar que no sea en el pasado (comparar en UTC es correcto)
         const now = new Date();
-        const nowUTC = new Date(Date.UTC(
-          now.getUTCFullYear(),
-          now.getUTCMonth(),
-          now.getUTCDate(),
-          now.getUTCHours(),
-          now.getUTCMinutes(),
-          now.getUTCSeconds()
-        ));
-        const isPast = currentTime.getTime() < nowUTC.getTime();
+        const isPast = currentTime.getTime() < now.getTime();
 
         const available = !hasConflict && !isPast;
 
         // Debug para los primeros slots
         if (slots.length < 3) {
-          console.log(`   Slot ${timeString}: available=${available}, hasConflict=${hasConflict}, isPast=${isPast}`);
-          console.log(`      currentTime: ${currentTime.toISOString()}, now: ${now.toISOString()}`);
+          console.log(`   Slot ${timeString} (local): available=${available}, hasConflict=${hasConflict}, isPast=${isPast}`);
+          console.log(`      currentTime (UTC): ${currentTime.toISOString()}`);
+          console.log(`      currentTime (local): ${formatTz(currentTimeInTenantTz, 'yyyy-MM-dd HH:mm:ss zzz', { timeZone: timezone })}`);
+          console.log(`      now (UTC): ${now.toISOString()}`);
         }
 
         slots.push({
