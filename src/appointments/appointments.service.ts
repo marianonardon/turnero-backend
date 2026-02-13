@@ -4,7 +4,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { AppointmentStatus } from '@prisma/client';
-import { utcToZonedTime, zonedTimeToUtc, format as formatTz } from 'date-fns-tz';
+import { toZonedTime, fromZonedTime, format as formatTz } from 'date-fns-tz';
 import { startOfDay, endOfDay, parseISO, getDay } from 'date-fns';
 
 @Injectable()
@@ -83,7 +83,7 @@ export class AppointmentsService {
           console.log('📅 Received UTC time:', createAppointmentDto.startTime);
         } else {
           // Es hora local del tenant, convertir a UTC
-          startTime = zonedTimeToUtc(createAppointmentDto.startTime, timezone);
+          startTime = fromZonedTime(createAppointmentDto.startTime, timezone);
           console.log('📅 Received local time, converted:', {
             input: createAppointmentDto.startTime,
             timezone,
@@ -286,7 +286,7 @@ export class AppointmentsService {
     // Parsear la fecha en la zona horaria del tenant (no UTC)
     // Crear fecha "naive" en la zona horaria local del tenant
     const dateString = `${query.date}T00:00:00`; // YYYY-MM-DDT00:00:00
-    const dateInTenantTz = zonedTimeToUtc(dateString, timezone);
+    const dateInTenantTz = fromZonedTime(dateString, timezone);
 
     console.log('📅 Parsed date in tenant timezone:', {
       input: query.date,
@@ -307,8 +307,8 @@ export class AppointmentsService {
     }
 
     // Crear startOfDay y endOfDay EN LA ZONA HORARIA DEL TENANT
-    const startOfDayLocal = zonedTimeToUtc(`${query.date}T00:00:00`, timezone);
-    const endOfDayLocal = zonedTimeToUtc(`${query.date}T23:59:59`, timezone);
+    const startOfDayLocal = fromZonedTime(`${query.date}T00:00:00`, timezone);
+    const endOfDayLocal = fromZonedTime(`${query.date}T23:59:59`, timezone);
 
     console.log('📅 Day boundaries:', {
       startOfDay: startOfDayLocal.toISOString(),
@@ -329,7 +329,7 @@ export class AppointmentsService {
 
     // Calcular dayOfWeek en la zona horaria del tenant (NO en UTC)
     // Convertir la fecha UTC a la zona horaria del tenant para obtener el día correcto
-    const dateInLocalTz = utcToZonedTime(dateInTenantTz, timezone);
+    const dateInLocalTz = toZonedTime(dateInTenantTz, timezone);
     const dayOfWeek = getDay(dateInLocalTz); // 0 (Domingo) a 6 (Sábado) en zona local
 
     console.log('🔍 Searching schedules:', {
@@ -458,8 +458,8 @@ export class AppointmentsService {
       const scheduleEndString = `${query.date}T${schedule.endTime}:00`;
 
       // Convertir a UTC para almacenamiento/comparación
-      const scheduleStart = zonedTimeToUtc(scheduleStartString, timezone);
-      const scheduleEnd = zonedTimeToUtc(scheduleEndString, timezone);
+      const scheduleStart = fromZonedTime(scheduleStartString, timezone);
+      const scheduleEnd = fromZonedTime(scheduleEndString, timezone);
 
       console.log(`📋 Processing schedule: ${schedule.startTime} - ${schedule.endTime} (tenant local time)`);
       console.log(`   Schedule start (UTC): ${scheduleStart.toISOString()}`);
@@ -475,7 +475,7 @@ export class AppointmentsService {
         if (slotEnd > scheduleEnd) break;
 
         // Convertir currentTime a zona horaria del tenant para mostrar la hora LOCAL
-        const currentTimeInTenantTz = utcToZonedTime(currentTime, timezone);
+        const currentTimeInTenantTz = toZonedTime(currentTime, timezone);
         const hours = currentTimeInTenantTz.getHours();
         const minutes = currentTimeInTenantTz.getMinutes();
         const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
