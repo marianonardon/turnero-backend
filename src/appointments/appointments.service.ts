@@ -555,23 +555,20 @@ export class AppointmentsService {
 
   // Público: Obtener appointments del día (solo para visualización, sin datos sensibles)
   async getDayAppointments(tenantId: string, date: string) {
-    const dateParts = date.split('-');
-    if (dateParts.length !== 3) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       throw new Error(`Invalid date format: ${date}. Expected YYYY-MM-DD`);
     }
 
-    const startOfDay = new Date(Date.UTC(
-      parseInt(dateParts[0]),
-      parseInt(dateParts[1]) - 1,
-      parseInt(dateParts[2]),
-      0, 0, 0, 0
-    ));
-    const endOfDay = new Date(Date.UTC(
-      parseInt(dateParts[0]),
-      parseInt(dateParts[1]) - 1,
-      parseInt(dateParts[2]),
-      23, 59, 59, 999
-    ));
+    // Obtener timezone del tenant para calcular inicio/fin del día correctamente
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { timezone: true },
+    });
+    const timezone = tenant?.timezone || 'UTC';
+
+    // Usar timezone del tenant (no UTC) para definir los límites del día
+    const startOfDay = fromZonedTime(`${date}T00:00:00`, timezone);
+    const endOfDay = fromZonedTime(`${date}T23:59:59`, timezone);
 
     const appointments = await this.prisma.appointment.findMany({
       where: {
