@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CustomerAuthController } from './customer-auth.controller';
+import { CustomerAppointmentsController } from './customer-appointments.controller';
 import { CustomerAuthService } from './customer-auth.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -19,7 +20,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       }),
     }),
   ],
-  controllers: [CustomerAuthController],
+  controllers: [CustomerAuthController, CustomerAppointmentsController],
   providers: [CustomerAuthService],
   exports: [CustomerAuthService],
 })
