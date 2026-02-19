@@ -14,7 +14,7 @@ export class CustomerAuthGuard implements CanActivate {
     private configService: ConfigService,
   ) {}
 
-  async canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromHeader(request);
 
