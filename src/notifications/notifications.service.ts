@@ -30,7 +30,7 @@ export class NotificationsService {
     try {
       const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
       console.log(`📧 Enviando magic link a ${email} desde ${fromEmail}`);
-      
+
       const result = await this.resend.emails.send({
         from: fromEmail,
         to: email,
@@ -42,6 +42,42 @@ export class NotificationsService {
       return { success: true, message: 'Magic link enviado por email' };
     } catch (error) {
       console.error('❌ Error sending magic link email:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      throw error;
+    }
+  }
+
+  async sendCustomerMagicLink(email: string, token: string, tenantId: string) {
+    // Obtener tenant para usar el slug en la URL
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const magicLink = `${frontendUrl}/${tenant?.slug}/auth/callback?token=${token}`;
+
+    // Si no hay Resend configurado, solo loguear (desarrollo o producción sin config)
+    if (!this.resend || !process.env.RESEND_API_KEY) {
+      console.log('📧 Customer Magic Link (Resend no configurado):', magicLink);
+      console.warn('⚠️ Para enviar emails, configura RESEND_API_KEY en Railway');
+      return { success: true, message: 'Magic link generado (Resend no configurado)', magicLink };
+    }
+
+    try {
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+      console.log(`📧 Enviando customer magic link a ${email} desde ${fromEmail}`);
+
+      const result = await this.resend.emails.send({
+        from: fromEmail,
+        to: email,
+        subject: `Accedé a tus reservas - ${tenant?.name || 'PadelTurn'}`,
+        html: this.getCustomerMagicLinkTemplate(magicLink, tenant?.name),
+      });
+
+      console.log('✅ Customer magic link enviado exitosamente:', result);
+      return { success: true, message: 'Magic link enviado por email' };
+    } catch (error) {
+      console.error('❌ Error sending customer magic link email:', error);
       console.error('Error details:', JSON.stringify(error, null, 2));
       throw error;
     }
@@ -221,6 +257,34 @@ export class NotificationsService {
             <p style="font-size: 12px; color: #666;">O copia y pega este link en tu navegador:</p>
             <p style="font-size: 12px; color: #666; word-break: break-all;">${magicLink}</p>
             <p style="font-size: 12px; color: #666; margin-top: 30px;">Este link expira en 15 minutos.</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  private getCustomerMagicLinkTemplate(magicLink: string, tenantName?: string): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(to right, #0a4d8c, #1a6fc2); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0;">Accedé a tus reservas</h1>
+          </div>
+          <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+            <p>Hola! Haz click en el siguiente botón para acceder a tus reservas${tenantName ? ` en ${tenantName}` : ''}:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${magicLink}" style="background: #0a4d8c; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                Ver mis reservas
+              </a>
+            </div>
+            <p style="font-size: 12px; color: #666;">O copia y pega este link en tu navegador:</p>
+            <p style="font-size: 12px; color: #666; word-break: break-all;">${magicLink}</p>
+            <p style="font-size: 12px; color: #666; margin-top: 30px;">Este link expira en 15 minutos y solo puede usarse una vez.</p>
           </div>
         </body>
       </html>

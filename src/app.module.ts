@@ -8,6 +8,7 @@ import { SchedulesModule } from './schedules/schedules.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { CustomersModule } from './customers/customers.module';
 import { AuthModule } from './auth/auth.module';
+import { CustomerAuthModule } from './customer-auth/customer-auth.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 
@@ -24,6 +25,7 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
     AppointmentsModule,
     CustomersModule,
     AuthModule,
+    CustomerAuthModule,
     NotificationsModule,
   ],
 })

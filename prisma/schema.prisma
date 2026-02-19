@@ -32,7 +32,8 @@ model Tenant {
   // Configuración
   timezone    String   @default("America/Argentina/Buenos_Aires")
   locale      String   @default("es-AR")
-  
+  cancellationHoursLimit Int @default(24) // Horas mínimas antes del turno para cancelar
+
   // Metadata
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -309,8 +310,10 @@ model MagicLinkToken {
   token      String   @unique
   expiresAt  DateTime
   used       Boolean  @default(false)
+  type       String   @default("admin") // "admin" | "customer"
+  customerId String?  // Solo para type="customer"
   createdAt  DateTime @default(now())
-  
+
   @@index([token])
   @@index([email, expiresAt])
   @@map("magic_link_tokens")
