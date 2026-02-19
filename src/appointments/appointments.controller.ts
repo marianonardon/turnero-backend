@@ -189,5 +189,12 @@ export class AppointmentsController {
   ) {
     return this.appointmentsService.removeExtra(id, extraId, tenantId);
   }
+
+  // Admin: Obtener métricas
+  @Get('metrics')
+  @UseGuards(TenantGuard)
+  getMetrics(@TenantId() tenantId: string) {
+    return this.appointmentsService.getMetrics(tenantId);
+  }
 }
 

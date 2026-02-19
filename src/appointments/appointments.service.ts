@@ -750,4 +750,79 @@ export class AppointmentsService {
       where: { id: extraId },
     });
   }
+
+  // ====================================
+  // Metrics
+  // ====================================
+
+  async getMetrics(tenantId: string) {
+    // Obtener appointments pagados
+    const paidAppointments = await this.prisma.appointment.findMany({
+      where: {
+        tenantId,
+        isPaid: true,
+      },
+      include: {
+        service: true,
+        extras: true,
+      },
+    });
+
+    // Calcular ingresos totales
+    const revenueTotal = paidAppointments.reduce((sum, apt) => {
+      return sum + Number(apt.totalAmount || 0);
+    }, 0);
+
+    // Calcular ingresos por canchas (sin extras)
+    const revenueFromCourts = paidAppointments.reduce((sum, apt) => {
+      return sum + Number(apt.service.price || 0);
+    }, 0);
+
+    // Calcular ingresos por extras
+    const revenueFromExtras = paidAppointments.reduce((sum, apt) => {
+      const extrasSum = (apt.extras || []).reduce((extraSum, extra) => {
+        return extraSum + Number(extra.unitPrice);
+      }, 0);
+      return sum + extrasSum;
+    }, 0);
+
+    // Calcular ingresos por método de pago
+    const revenueByPaymentMethod = paidAppointments.reduce((acc, apt) => {
+      const method = apt.paymentMethod || 'sin_especificar';
+      acc[method] = (acc[method] || 0) + Number(apt.totalAmount || 0);
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Otras métricas
+    const totalAppointments = await this.prisma.appointment.count({
+      where: { tenantId },
+    });
+
+    const confirmedAppointments = await this.prisma.appointment.count({
+      where: { tenantId, status: 'CONFIRMED' },
+    });
+
+    const cancelledAppointments = await this.prisma.appointment.count({
+      where: { tenantId, status: 'CANCELLED' },
+    });
+
+    const paidCount = paidAppointments.length;
+    const unpaidCount = totalAppointments - paidCount;
+
+    return {
+      appointments: {
+        total: totalAppointments,
+        confirmed: confirmedAppointments,
+        cancelled: cancelledAppointments,
+        paid: paidCount,
+        unpaid: unpaidCount,
+      },
+      revenue: {
+        total: revenueTotal,
+        fromCourts: revenueFromCourts,
+        fromExtras: revenueFromExtras,
+        byPaymentMethod: revenueByPaymentMethod,
+      },
+    };
+  }
 }
