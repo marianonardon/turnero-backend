@@ -15,6 +15,7 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { PayAppointmentDto } from './dto/pay-appointment.dto';
 import { CreateExtraDto } from './dto/create-extra.dto';
+import { CreateRecurringSeriesDto } from './dto/create-recurring-series.dto';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { TenantId } from '../common/decorators/tenant.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -118,6 +119,13 @@ export class AppointmentsController {
     }
   }
 
+  // Admin: Obtener métricas (DEBE estar antes de @Get(':id'))
+  @Get('metrics')
+  @UseGuards(TenantGuard)
+  getMetrics(@TenantId() tenantId: string) {
+    return this.appointmentsService.getMetrics(tenantId);
+  }
+
   // Admin: Listar appointments
   @Get()
   @UseGuards(TenantGuard)
@@ -190,11 +198,35 @@ export class AppointmentsController {
     return this.appointmentsService.removeExtra(id, extraId, tenantId);
   }
 
-  // Admin: Obtener métricas
-  @Get('metrics')
+  // Admin: Crear serie recurrente
+  @Post('recurring')
   @UseGuards(TenantGuard)
-  getMetrics(@TenantId() tenantId: string) {
-    return this.appointmentsService.getMetrics(tenantId);
+  createRecurringSeries(
+    @TenantId() tenantId: string,
+    @Body() dto: CreateRecurringSeriesDto,
+  ) {
+    return this.appointmentsService.createRecurringSeries(tenantId, dto);
+  }
+
+  // Admin: Cancelar serie completa
+  @Delete('recurring/:seriesId')
+  @UseGuards(TenantGuard)
+  cancelRecurringSeries(
+    @Param('seriesId') seriesId: string,
+    @TenantId() tenantId: string,
+  ) {
+    return this.appointmentsService.cancelRecurringSeries(seriesId, tenantId);
+  }
+
+  // Admin: Cancelar serie desde una fecha
+  @Delete('recurring/:seriesId/from/:date')
+  @UseGuards(TenantGuard)
+  cancelRecurringSeriesFrom(
+    @Param('seriesId') seriesId: string,
+    @Param('date') date: string,
+    @TenantId() tenantId: string,
+  ) {
+    return this.appointmentsService.cancelRecurringSeriesFrom(seriesId, tenantId, date);
   }
 }
 

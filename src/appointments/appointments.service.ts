@@ -825,4 +825,227 @@ export class AppointmentsService {
       },
     };
   }
+
+  // ====================================
+  // Recurring Series
+  // ====================================
+
+  async createRecurringSeries(
+    tenantId: string,
+    dto: {
+      customerId: string;
+      serviceId: string;
+      professionalId: string;
+      dayOfWeek: number;
+      startTime: string;
+      weeksAhead: number;
+      seriesStart: string;
+      seriesEnd?: string;
+    },
+  ) {
+    // Validar que el servicio, professional y customer pertenecen al tenant
+    const service = await this.prisma.service.findFirst({
+      where: { id: dto.serviceId, tenantId },
+    });
+    if (!service) {
+      throw new NotFoundException('Service not found');
+    }
+
+    const professional = await this.prisma.professional.findFirst({
+      where: { id: dto.professionalId, tenantId },
+    });
+    if (!professional) {
+      throw new NotFoundException('Professional not found');
+    }
+
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: dto.customerId, tenantId },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    // Obtener timezone del tenant
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { timezone: true },
+    });
+    const timezone = tenant?.timezone || 'UTC';
+
+    // Crear la serie
+    const series = await this.prisma.recurringSeries.create({
+      data: {
+        tenantId,
+        customerId: dto.customerId,
+        serviceId: dto.serviceId,
+        professionalId: dto.professionalId,
+        dayOfWeek: dto.dayOfWeek,
+        startTime: dto.startTime,
+        weeksAhead: dto.weeksAhead,
+        seriesStart: new Date(dto.seriesStart),
+        seriesEnd: dto.seriesEnd ? new Date(dto.seriesEnd) : null,
+      },
+    });
+
+    // Generar appointments para las próximas N semanas
+    const appointments = [];
+    const startDate = parseISO(dto.seriesStart);
+    let currentDate = new Date(startDate);
+
+    // Encontrar la primera ocurrencia del día de la semana especificado
+    while (getDay(currentDate) !== dto.dayOfWeek) {
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Generar appointments
+    let weekIndex = 0;
+    while (weekIndex < dto.weeksAhead) {
+      // Si hay fecha de fin, no generar después de ella
+      if (dto.seriesEnd && currentDate > new Date(dto.seriesEnd)) {
+        break;
+      }
+
+      // Construir el datetime del appointment
+      const [hours, minutes] = dto.startTime.split(':');
+      const appointmentDateTime = new Date(currentDate);
+      appointmentDateTime.setHours(parseInt(hours, 10));
+      appointmentDateTime.setMinutes(parseInt(minutes, 10));
+      appointmentDateTime.setSeconds(0);
+      appointmentDateTime.setMilliseconds(0);
+
+      // Convertir a UTC usando el timezone del tenant
+      const startTimeUTC = fromZonedTime(appointmentDateTime, timezone);
+      const endTimeUTC = new Date(startTimeUTC);
+      endTimeUTC.setMinutes(endTimeUTC.getMinutes() + service.duration);
+
+      // Verificar si ya existe un turno en este horario (conflicto)
+      const existingAppointment = await this.prisma.appointment.findFirst({
+        where: {
+          professionalId: dto.professionalId,
+          startTime: startTimeUTC,
+          status: {
+            notIn: [AppointmentStatus.CANCELLED],
+          },
+        },
+      });
+
+      if (!existingAppointment) {
+        appointments.push({
+          tenantId,
+          customerId: dto.customerId,
+          serviceId: dto.serviceId,
+          professionalId: dto.professionalId,
+          startTime: startTimeUTC,
+          endTime: endTimeUTC,
+          status: AppointmentStatus.CONFIRMED,
+          isConfirmed: true,
+          confirmedAt: new Date(),
+          recurringSeriesId: series.id,
+          recurringSeriesIdx: weekIndex,
+        });
+      }
+
+      // Avanzar una semana
+      currentDate.setDate(currentDate.getDate() + 7);
+      weekIndex++;
+    }
+
+    // Crear todos los appointments de la serie
+    if (appointments.length > 0) {
+      await this.prisma.appointment.createMany({
+        data: appointments,
+      });
+    }
+
+    return {
+      series,
+      appointmentsCreated: appointments.length,
+    };
+  }
+
+  async cancelRecurringSeries(seriesId: string, tenantId: string) {
+    // Verificar que la serie existe y pertenece al tenant
+    const series = await this.prisma.recurringSeries.findFirst({
+      where: { id: seriesId, tenantId },
+    });
+
+    if (!series) {
+      throw new NotFoundException('Recurring series not found');
+    }
+
+    // Marcar la serie como inactiva
+    await this.prisma.recurringSeries.update({
+      where: { id: seriesId },
+      data: { isActive: false },
+    });
+
+    // Cancelar todos los appointments futuros de la serie
+    const now = new Date();
+    await this.prisma.appointment.updateMany({
+      where: {
+        recurringSeriesId: seriesId,
+        startTime: { gte: now },
+        status: {
+          notIn: [AppointmentStatus.CANCELLED],
+        },
+      },
+      data: {
+        status: AppointmentStatus.CANCELLED,
+        cancelledAt: now,
+        cancellationReason: 'Serie recurrente cancelada',
+        cancelledBy: 'admin',
+      },
+    });
+
+    return { message: 'Recurring series cancelled successfully' };
+  }
+
+  async cancelRecurringSeriesFrom(seriesId: string, tenantId: string, fromDate: string) {
+    // Verificar que la serie existe y pertenece al tenant
+    const series = await this.prisma.recurringSeries.findFirst({
+      where: { id: seriesId, tenantId },
+    });
+
+    if (!series) {
+      throw new NotFoundException('Recurring series not found');
+    }
+
+    const fromDateTime = parseISO(fromDate);
+
+    // Cancelar appointments desde la fecha especificada
+    await this.prisma.appointment.updateMany({
+      where: {
+        recurringSeriesId: seriesId,
+        startTime: { gte: fromDateTime },
+        status: {
+          notIn: [AppointmentStatus.CANCELLED],
+        },
+      },
+      data: {
+        status: AppointmentStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancellationReason: `Serie recurrente cancelada desde ${fromDate}`,
+        cancelledBy: 'admin',
+      },
+    });
+
+    // Si ya no hay appointments activos en la serie, marcarla como inactiva
+    const activeAppointments = await this.prisma.appointment.count({
+      where: {
+        recurringSeriesId: seriesId,
+        status: {
+          notIn: [AppointmentStatus.CANCELLED],
+        },
+      },
+    });
+
+    if (activeAppointments === 0) {
+      await this.prisma.recurringSeries.update({
+        where: { id: seriesId },
+        data: { isActive: false },
+      });
+    }
+
+    return { message: 'Recurring series cancelled from date successfully' };
+  }
 }

@@ -284,6 +284,11 @@ model Appointment {
   // Extras
   extras         AppointmentExtra[]
 
+  // Recurrencia
+  recurringSeriesId  String?
+  recurringSeries    RecurringSeries? @relation(fields: [recurringSeriesId], references: [id], onDelete: SetNull)
+  recurringSeriesIdx Int?  // Índice dentro de la serie (0, 1, 2...)
+
   // Metadata
   notes          String?  @db.Text // Notas internas del admin
   createdAt      DateTime @default(now())
@@ -328,6 +333,44 @@ model AppointmentExtra {
 
   @@index([appointmentId])
   @@map("appointment_extras")
+}
+
+// ============================================
+// RECURRING_SERIES (Series de turnos recurrentes)
+// ============================================
+
+model RecurringSeries {
+  id             String   @id @default(uuid())
+  tenantId       String
+
+  // Cliente y configuración del turno
+  customerId     String
+  serviceId      String
+  professionalId String
+
+  // Recurrencia
+  dayOfWeek      Int      // 0-6 (Domingo-Sábado)
+  startTime      String   // "HH:mm" (ej: "14:00")
+  weeksAhead     Int      @default(8) // Cuántas semanas generar adelante
+
+  // Vigencia de la serie
+  seriesStart    DateTime // Fecha de inicio de la serie
+  seriesEnd      DateTime? // Fecha de fin (null = indefinido)
+
+  // Estado
+  isActive       Boolean  @default(true)
+
+  // Appointments generados
+  appointments   Appointment[]
+
+  // Metadata
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([customerId])
+  @@map("recurring_series")
 }
 
 // ============================================
