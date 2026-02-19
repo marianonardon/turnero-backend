@@ -646,6 +646,7 @@ export class AppointmentsService {
         customer: true,
         service: true,
         professional: true,
+        extras: true,
       },
     });
 
@@ -675,6 +676,78 @@ export class AppointmentsService {
 
     return this.prisma.appointment.delete({
       where: { id },
+    });
+  }
+
+  // ====================================
+  // Payment & Extras
+  // ====================================
+
+  async payAppointment(id: string, tenantId: string, payData: { playerCount: number; paymentMethod: string }) {
+    // Verificar que el appointment existe y pertenece al tenant
+    const appointment = await this.findOne(id, tenantId);
+
+    // Calcular total: precio del servicio + extras
+    const extras = await this.prisma.appointmentExtra.findMany({
+      where: { appointmentId: id },
+    });
+
+    const servicePrice = Number(appointment.service.price) || 0;
+    const extrasTotal = extras.reduce((sum, extra) => {
+      return sum + Number(extra.unitPrice);
+    }, 0);
+
+    const totalAmount = servicePrice + extrasTotal;
+
+    // Marcar como pagado
+    return this.prisma.appointment.update({
+      where: { id },
+      data: {
+        isPaid: true,
+        paidAt: new Date(),
+        paymentMethod: payData.paymentMethod,
+        playerCount: payData.playerCount,
+        totalAmount,
+      },
+      include: {
+        service: true,
+        professional: true,
+        customer: true,
+        extras: true,
+      },
+    });
+  }
+
+  async addExtra(id: string, tenantId: string, extraData: { name: string; unitPrice: number; dividedAmong: number }) {
+    // Verificar que el appointment existe y pertenece al tenant
+    await this.findOne(id, tenantId);
+
+    return this.prisma.appointmentExtra.create({
+      data: {
+        tenantId,
+        appointmentId: id,
+        name: extraData.name,
+        unitPrice: extraData.unitPrice,
+        dividedAmong: extraData.dividedAmong,
+      },
+    });
+  }
+
+  async removeExtra(id: string, extraId: string, tenantId: string) {
+    // Verificar que el appointment existe y pertenece al tenant
+    await this.findOne(id, tenantId);
+
+    // Verificar que el extra existe
+    const extra = await this.prisma.appointmentExtra.findUnique({
+      where: { id: extraId },
+    });
+
+    if (!extra || extra.appointmentId !== id) {
+      throw new NotFoundException('Extra not found');
+    }
+
+    return this.prisma.appointmentExtra.delete({
+      where: { id: extraId },
     });
   }
 }

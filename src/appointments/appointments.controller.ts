@@ -13,6 +13,8 @@ import {
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
+import { PayAppointmentDto } from './dto/pay-appointment.dto';
+import { CreateExtraDto } from './dto/create-extra.dto';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { TenantId } from '../common/decorators/tenant.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -153,6 +155,39 @@ export class AppointmentsController {
   @UseGuards(TenantGuard)
   remove(@Param('id') id: string, @TenantId() tenantId: string) {
     return this.appointmentsService.remove(id, tenantId);
+  }
+
+  // Admin: Marcar como pagado
+  @Patch(':id/pay')
+  @UseGuards(TenantGuard)
+  pay(
+    @Param('id') id: string,
+    @TenantId() tenantId: string,
+    @Body() payData: PayAppointmentDto,
+  ) {
+    return this.appointmentsService.payAppointment(id, tenantId, payData);
+  }
+
+  // Admin: Agregar extra
+  @Post(':id/extras')
+  @UseGuards(TenantGuard)
+  addExtra(
+    @Param('id') id: string,
+    @TenantId() tenantId: string,
+    @Body() extraData: CreateExtraDto,
+  ) {
+    return this.appointmentsService.addExtra(id, tenantId, extraData);
+  }
+
+  // Admin: Eliminar extra
+  @Delete(':id/extras/:extraId')
+  @UseGuards(TenantGuard)
+  removeExtra(
+    @Param('id') id: string,
+    @Param('extraId') extraId: string,
+    @TenantId() tenantId: string,
+  ) {
+    return this.appointmentsService.removeExtra(id, extraId, tenantId);
   }
 }
 

@@ -273,7 +273,17 @@ model Appointment {
   // Notificaciones
   reminderSentAt DateTime?
   confirmationSentAt DateTime?
-  
+
+  // Pago
+  isPaid         Boolean   @default(false)
+  paidAt         DateTime?
+  paymentMethod  String?   // "efectivo" | "transferencia" | "qr"
+  playerCount    Int       @default(1)
+  totalAmount    Decimal?  @db.Decimal(10, 2)
+
+  // Extras
+  extras         AppointmentExtra[]
+
   // Metadata
   notes          String?  @db.Text // Notas internas del admin
   createdAt      DateTime @default(now())
@@ -298,6 +308,26 @@ enum AppointmentStatus {
   CANCELLED  // Cancelado
   COMPLETED  // Completado
   NO_SHOW    // No asistió
+}
+
+// ============================================
+// APPOINTMENT_EXTRAS (Extras de turnos)
+// ============================================
+
+model AppointmentExtra {
+  id             String      @id @default(uuid())
+  tenantId       String
+  appointmentId  String
+  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  name           String      // "Pelotas", "Agua", "Grip"
+  unitPrice      Decimal     @db.Decimal(10, 2)
+  dividedAmong   Int         @default(0) // 0 = todos los jugadores, o número específico
+
+  createdAt      DateTime    @default(now())
+
+  @@index([appointmentId])
+  @@map("appointment_extras")
 }
 
 // ============================================
