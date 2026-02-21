@@ -755,12 +755,27 @@ export class AppointmentsService {
   // Metrics
   // ====================================
 
-  async getMetrics(tenantId: string) {
-    // Obtener appointments pagados
+  async getMetrics(tenantId: string, query?: { startDate?: string; endDate?: string }) {
+    // Construir filtros de fecha
+    const dateFilter: any = {};
+
+    if (query?.startDate || query?.endDate) {
+      if (query.startDate) {
+        // Inicio del día en UTC
+        dateFilter.gte = new Date(`${query.startDate}T00:00:00.000Z`);
+      }
+      if (query.endDate) {
+        // Fin del día en UTC (23:59:59.999)
+        dateFilter.lte = new Date(`${query.endDate}T23:59:59.999Z`);
+      }
+    }
+
+    // Obtener appointments pagados (con filtro de fecha opcional)
     const paidAppointments = await this.prisma.appointment.findMany({
       where: {
         tenantId,
         isPaid: true,
+        ...(Object.keys(dateFilter).length > 0 && { startTime: dateFilter }),
       },
       include: {
         service: true,
@@ -793,17 +808,28 @@ export class AppointmentsService {
       return acc;
     }, {} as Record<string, number>);
 
-    // Otras métricas
+    // Otras métricas (con filtro de fecha opcional)
     const totalAppointments = await this.prisma.appointment.count({
-      where: { tenantId },
+      where: {
+        tenantId,
+        ...(Object.keys(dateFilter).length > 0 && { startTime: dateFilter }),
+      },
     });
 
     const confirmedAppointments = await this.prisma.appointment.count({
-      where: { tenantId, status: 'CONFIRMED' },
+      where: {
+        tenantId,
+        status: 'CONFIRMED',
+        ...(Object.keys(dateFilter).length > 0 && { startTime: dateFilter }),
+      },
     });
 
     const cancelledAppointments = await this.prisma.appointment.count({
-      where: { tenantId, status: 'CANCELLED' },
+      where: {
+        tenantId,
+        status: 'CANCELLED',
+        ...(Object.keys(dateFilter).length > 0 && { startTime: dateFilter }),
+      },
     });
 
     const paidCount = paidAppointments.length;

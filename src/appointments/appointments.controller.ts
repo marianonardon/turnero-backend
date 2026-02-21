@@ -16,6 +16,7 @@ import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { PayAppointmentDto } from './dto/pay-appointment.dto';
 import { CreateExtraDto } from './dto/create-extra.dto';
 import { CreateRecurringSeriesDto } from './dto/create-recurring-series.dto';
+import { MetricsQueryDto } from './dto/metrics-query.dto';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { TenantId } from '../common/decorators/tenant.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -122,8 +123,8 @@ export class AppointmentsController {
   // Admin: Obtener métricas (DEBE estar antes de @Get(':id'))
   @Get('metrics')
   @UseGuards(TenantGuard)
-  getMetrics(@TenantId() tenantId: string) {
-    return this.appointmentsService.getMetrics(tenantId);
+  getMetrics(@TenantId() tenantId: string, @Query() query: MetricsQueryDto) {
+    return this.appointmentsService.getMetrics(tenantId, query);
   }
 
   // Admin: Listar appointments
